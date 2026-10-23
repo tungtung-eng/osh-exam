@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="職安乙級">
+<meta name="theme-color" content="#1f6f5c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>職安乙級</title>
+<style>
+:root{
+  --bg:#f4f6f5; --card:#fff; --ink:#1d2421; --sub:#5e6b66; --line:#dfe5e2;
+  --main:#1f6f5c; --main2:#e3f1ec; --ok:#1f8a4c; --okbg:#e5f5ec; --ng:#c0392b; --ngbg:#fbe9e7;
+  --warn:#b7791f; --warnbg:#fdf3e1; --pick:#2f6fb0; --pickbg:#e6eff9;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#121615; --card:#1c2220; --ink:#e7ecea; --sub:#9aa7a2; --line:#2c3532;
+    --main:#5cc5a6; --main2:#1d3530; --ok:#5fd18f; --okbg:#173326; --ng:#ff8a7a; --ngbg:#3a1e1b;
+    --warn:#f0b75a; --warnbg:#382b14; --pick:#7fb4ec; --pickbg:#1b2c40;
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font:17px/1.65 -apple-system,"PingFang TC","Microsoft JhengHei",sans-serif}
+body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+main{max-width:720px;margin:0 auto;padding:12px 16px calc(16px + env(safe-area-inset-top))}
+h1{font-size:22px;margin:8px 0 12px} h2{font-size:18px;margin:18px 0 8px} h3{font-size:16px;margin:12px 0 6px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:10px 0}
+.sub{color:var(--sub);font-size:14px}
+.row{display:flex;gap:10px;align-items:center}
+.row>.grow{flex:1;min-width:0}
+.btn{display:inline-block;border:0;border-radius:12px;padding:12px 16px;font:inherit;font-weight:600;
+  background:var(--main);color:#fff;cursor:pointer;text-align:center;white-space:nowrap;text-decoration:none;flex:none}
+.btn.ghost{background:var(--main2);color:var(--main)}
+.btn.small{padding:6px 12px;font-size:14px;border-radius:10px}
+.btn.wide{display:block;width:100%;margin-top:10px}
+.btn:disabled{opacity:.45}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--main)}
+.pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:var(--main2);color:var(--main);font-weight:600}
+.pill.warn{background:var(--warnbg);color:var(--warn)} .pill.ng{background:var(--ngbg);color:var(--ng)}
+.big{font-size:34px;font-weight:700;line-height:1.1}
+.slot{display:flex;gap:12px;align-items:center}
+.slot .time{font-weight:700;color:var(--main);width:52px;flex:none}
+.slot.done .time{color:var(--ok)}
+.list a{display:block;color:inherit;text-decoration:none}
+.list .card{margin:8px 0}
+/* 題目 */
+.q{font-size:18px;margin:6px 0 12px}
+.opt{display:flex;gap:10px;width:100%;text-align:left;font:inherit;color:inherit;background:var(--card);
+  border:2px solid var(--line);border-radius:12px;padding:11px 12px;margin:8px 0;cursor:pointer}
+.opt b{flex:none;width:24px;color:var(--sub)}
+.opt.pick{border-color:var(--pick);background:var(--pickbg)}
+.opt.ok{border-color:var(--ok);background:var(--okbg)}
+.opt.ng{border-color:var(--ng);background:var(--ngbg)}
+.fb{border-radius:12px;padding:12px 14px;margin:12px 0}
+.fb.ok{background:var(--okbg)} .fb.ng{background:var(--ngbg)}
+.explain{white-space:pre-wrap}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;color:var(--sub)}
+.qimg{max-width:100%;background:#fff;border-radius:8px}
+/* 計算 */
+input[type=number],input[type=text],input[type=email],input[type=password],select{
+  font:inherit;width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.steps{white-space:pre-wrap;font-size:15px;background:var(--bg);border-radius:10px;padding:10px 12px}
+.formula{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:15px;background:var(--bg);border-radius:8px;padding:6px 10px;display:block;margin:6px 0;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:15px} td,th{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left;vertical-align:top}
+.note h3{color:var(--main)} .note p{margin:6px 0} .note ul{margin:6px 0;padding-left:22px}
+/* 底部分頁 */
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);
+  display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:5}
+nav a{flex:1;text-align:center;padding:8px 0 6px;color:var(--sub);text-decoration:none;font-size:12px}
+nav a span{display:block;font-size:22px;line-height:1.2}
+nav a.on{color:var(--main);font-weight:700}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ink);color:var(--bg);
+  padding:8px 16px;border-radius:99px;font-size:14px;z-index:9}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<nav id="nav">
+  <a href="#/today" data-tab="today"><span>📅</span>今天</a>
+  <a href="#/practice" data-tab="practice"><span>✏️</span>練習</a>
+  <a href="#/listen" data-tab="listen"><span>🎧</span>用聽的</a>
+  <a href="#/calc" data-tab="calc"><span>🧮</span>計算</a>
+  <a href="#/me" data-tab="me"><span>👤</span>我的</a>
+</nav>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script src="calc.js"></script>
+<script src="sync.js"></script>
+</body>
+</html>
