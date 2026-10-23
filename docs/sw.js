@@ -1,5 +1,5 @@
 /* 離線可用：先用快取，背景再更新（改版時把 VER 加 1） */
-const VER = 'osh-202610231629';
+const VER = 'osh-202610231636';
 const FILES = ['./', 'index.html', 'app.js', 'calc.js', 'sync.js', 'config.js', 'manifest.webmanifest',
   'icon-180.png', 'icon-512.png', 'data/bank.json', 'data/explain.json', 'data/notes.json', 'data/refs.json', 'data/laws.json',
   'img/90008-03-013.png', 'img/90009-04-002.png'];
