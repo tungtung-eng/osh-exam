@@ -47,7 +47,7 @@ window.showRef = async (id, el) => {
 };
 
 /* ---------- 進度 ---------- */
-function blank() { return { v: 1, q: {}, days: {}, set: { rate: 1, wait: 4, readOpts: true, shuffle: true }, upd: 0 }; }
+function blank() { return { v: 1, q: {}, days: {}, set: { rate: 1, wait: 4, readOpts: true, shuffle: true, autoRead: true, font: 17 }, upd: 0 }; }
 function load() {
   try { P = Object.assign(blank(), JSON.parse(localStorage.getItem('oshP') || '{}')); } catch (e) { P = blank(); }
   P.set = Object.assign(blank().set, P.set);
@@ -116,7 +116,8 @@ function render() {
   const [, name, arg] = (location.hash || '#/today').split('/');
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === name ||
     (a.dataset.tab === 'practice' && ['topic', 'quiz', 'note', 'mock', 'laws', 'law'].includes(name))));
-  if (name !== 'listen' && window.speechSynthesis) speechSynthesis.cancel();
+  if (name !== render.last && name !== 'listen' && window.speechSynthesis) Speech.stop();
+  render.last = name;
   (routes[name] || routes.today)(arg ? decodeURIComponent(arg) : undefined);
   window.scrollTo(0, 0);
 }
@@ -263,6 +264,7 @@ window.startQuiz = opt => {
   S = Object.assign({ i: 0, res: {}, picks: {}, first: {}, order: {}, requeued: {}, back: location.hash || '#/today' }, opt);
   for (const id of S.ids) S.order[id] = P.set.shuffle ? shuffle([1, 2, 3, 4]) : [1, 2, 3, 4];
   if (S.mode === 'mock') S.end = Date.now() + 100 * 60e3;
+  Speech.unlock();   // iPhone 要在按鈕按下的當下先出聲，之後才能自動念
   go('#/quiz/' + Date.now());
 };
 
@@ -280,7 +282,8 @@ routes.quiz = () => {
   const right = q.ans.map(o => ord.indexOf(o) + 1).sort().map(n => NUM[n]).join('、');
   $('#app').innerHTML = `
     <div class="top"><a href="javascript:quitQuiz()">✕ 結束</a><span>${esc(S.title)}</span><span>${S.i + 1} / ${S.ids.length}${S.mode === 'mock' ? ` ・ <span id="clock"></span>` : ''}</span></div>
-    <div class="row" style="margin-top:8px"><span class="pill">${esc(q.topicName)}</span>${q.multi ? '<span class="pill warn">複選：選 2 個以上，全對才給分</span>' : ''}</div>
+    <div class="row" style="margin-top:8px"><span class="pill">${esc(q.topicName)}</span>${q.multi ? '<span class="pill warn">複選：選 2 個以上，全對才給分</span>' : ''}
+      <span class="grow"></span><button class="btn small ghost" onclick="speakCur()" aria-label="朗讀">🔊 念</button></div>
     <div class="q">${esc(q.q)}</div>
     ${q.img ? `<img class="qimg" src="${q.img}" alt="">` : ''}
     ${opts}
@@ -291,14 +294,33 @@ routes.quiz = () => {
             <button class="btn small ghost" onclick="showRef('${id}',this)">看條文</button></div>`
         : law ? `<div class="sub" style="margin-top:8px">📖 <a href="${lawLink(law)}" target="_blank" rel="noopener">查「${esc(law)}」條文</a></div>` : ''}
       </div>
-      <div class="row"><button class="btn ghost" onclick="speakQ('${id}',true)">🔊</button>
-        <button class="btn grow" onclick="nextQ()">下一題 ›</button></div>`
+      <div class="row"><button class="btn grow" onclick="nextQ()">下一題 ›</button></div>`
       : q.multi || S.mode === 'mock'
         ? `<div class="row">${S.mode === 'mock' && S.i > 0 ? '<button class="btn ghost" onclick="S.i--;render()">‹</button>' : ''}
            <button class="btn grow" ${S.mode !== 'mock' && pick.length < 2 ? 'disabled' : ''} onclick="${S.mode === 'mock' ? 'nextQ()' : 'judge()'}">${S.mode === 'mock' ? (S.i + 1 < S.ids.length ? '下一題 ›' : '交卷') : '確定'}</button></div>`
         : ''}
     ${S.mode === 'mock' ? `<button class="btn wide ghost" onclick="if(confirm('確定交卷？'))quizDone()">交卷</button>` : ''}`;
   if (S.mode === 'mock') tick();
+  // 自動朗讀：新的一題念題目；答完念對錯和解說（同一個狀態只念一次）
+  const key = S.i + (judged ? 'a' : 'q');
+  if (P.set.autoRead && S.spoken !== key) { S.spoken = key; speakCur(); }
+};
+function quizParts(q, ord) {
+  const parts = [q.q];
+  if (!q.img) ord.forEach((o, k) => parts.push(NUM[k + 1] + '、' + q.opts[o - 1]));
+  if (q.multi) parts.push('這是複選題，要選兩個以上');
+  return parts;
+}
+// 念目前這一題：還沒答念題目，答完念結果
+window.speakCur = () => {
+  if (!S) return;
+  const id = S.ids[S.i], q = BY_ID[id], ord = S.order[id];
+  const judged = S.res[S.i] !== undefined && S.mode !== 'mock';
+  if (!judged) return Speech.say(quizParts(q, ord));
+  const right = q.ans.map(o => ord.indexOf(o) + 1).sort();
+  const txt = (S.res[S.i] ? '答對了。' : '答錯了。') + '正確答案是' + right.map(n => NUM[n]).join('、') + '：' +
+    (q.img ? '' : right.map(n => q.opts[ord[n - 1] - 1]).join('；'));
+  Speech.say([txt, ...(EXPLAIN[id] ? [EXPLAIN[id]] : [])]);
 };
 function tick() {
   const el = $('#clock'); if (!el || !S) return;
@@ -420,6 +442,10 @@ const Speech = {
     };
     this.stopped = false; clearTimeout(this.timer); next();
   },
+  unlock() {
+    if (!window.speechSynthesis || this.unlocked) return;
+    const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); this.unlocked = true;
+  },
   stop() { this.stopped = true; clearTimeout(this.timer); if (window.speechSynthesis) speechSynthesis.cancel(); },
 };
 function qParts(q, withAns, withOpts = true) {
@@ -511,7 +537,10 @@ routes.me = () => {
       <button class="btn small ghost" onclick="navigator.clipboard.writeText('${base}').then(()=>toast('網址已複製'))">複製 App 網址</button></div>
     <h2>設定</h2>
     <div class="card">
-      <label class="row"><span class="grow">選項順序打亂（避免背位置）</span><input type="checkbox" ${P.set.shuffle ? 'checked' : ''} onchange="P.set.shuffle=this.checked;save()"></label>
+      <label class="row"><span class="grow">做題時自動念題目和解說</span><input type="checkbox" ${P.set.autoRead ? 'checked' : ''} onchange="P.set.autoRead=this.checked;save()"></label>
+      <div class="row" style="margin-top:10px"><span class="grow">念的速度</span><select style="width:auto" onchange="P.set.rate=+this.value;save()">${[0.8, 0.9, 1, 1.1, 1.2, 1.4].map(r => `<option ${P.set.rate === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+      <div class="row" style="margin-top:10px"><span class="grow">字體大小</span><select style="width:auto" onchange="P.set.font=+this.value;save();applyFont()">${[[17, '標準'], [19, '大'], [21, '特大']].map(([v, t]) => `<option value="${v}" ${P.set.font === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <label class="row" style="margin-top:10px"><span class="grow">選項順序打亂（避免背位置）</span><input type="checkbox" ${P.set.shuffle ? 'checked' : ''} onchange="P.set.shuffle=this.checked;save()"></label>
     </div>
     <h2>備份</h2>
     <div class="card"><div class="row">
@@ -533,9 +562,11 @@ window.importP = f => {
     .catch(() => toast('檔案不對'));
 };
 
+window.applyFont = () => document.documentElement.style.setProperty('--fs', (P.set.font || 17) + 'px');
+
 /* ---------- 啟動 ---------- */
 async function boot() {
-  load(); Speech.init();
+  load(); Speech.init(); applyFont();
   const j = async (u, d) => { try { const r = await fetch(u); return r.ok ? r.json() : d; } catch (e) { return d; } };
   const [bank, ex, notes, refs] = await Promise.all([j('data/bank.json', { questions: [] }), j('data/explain.json', {}), j('data/notes.json', {}), j('data/refs.json', {})]);
   BANK = bank.questions; EXPLAIN = ex; NOTES = notes; REFS = refs;
