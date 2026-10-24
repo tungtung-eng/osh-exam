@@ -47,7 +47,7 @@ window.showRef = async (id, el) => {
 };
 
 /* ---------- 進度 ---------- */
-function blank() { return { v: 1, q: {}, days: {}, set: { rate: 1, wait: 4, readOpts: true, shuffle: true, autoRead: true, font: 17 }, upd: 0 }; }
+function blank() { return { v: 1, q: {}, days: {}, set: { rate: 1, wait: 4, readOpts: true, shuffle: true, autoRead: true, font: 17, goal: '2027-01-31' }, upd: 0 }; }
 function load() {
   try { P = Object.assign(blank(), JSON.parse(localStorage.getItem('oshP') || '{}')); } catch (e) { P = blank(); }
   P.set = Object.assign(blank().set, P.set);
@@ -96,10 +96,20 @@ function plan() {
   const sprint = addDays(EXAM.written, -SPRINT_DAYS);
   const left = orderedNew();
   const doneToday = day(t).n;
-  const daysLeft = Math.max(1, daysBetween(t, sprint));
+  // 第一輪讀完的目標日（預設 1/31，比衝刺日早，留時間給沒空的日子和複習）；過了目標日還沒讀完，就用衝刺日當期限
+  let goal = P.set.goal && P.set.goal < sprint ? P.set.goal : sprint;
+  if (t >= goal) goal = sprint;
+  const daysLeft = Math.max(1, daysBetween(t, goal));
   const inSprint = t >= sprint;
   const target = inSprint ? 0 : Math.max(8, Math.ceil((left.length + doneToday) / daysLeft));
-  return { sprint, inSprint, left, target, doneToday, daysLeft };
+  // 最近 7 天（有讀書的日子）平均每天學幾題新的 → 推算第一輪讀完的日子
+  const first = Object.keys(P.days).filter(d => P.days[d].n).sort()[0];
+  const span = first ? Math.min(7, daysBetween(first, t) + 1) : 0;
+  let sum = 0;
+  for (let i = 0; i < span; i++) sum += P.days[addDays(t, -i)]?.n || 0;
+  const pace = span ? sum / span : 0;
+  const eta = pace && left.length ? addDays(t, Math.ceil(left.length / pace)) : null;
+  return { sprint, inSprint, left, target, doneToday, daysLeft, goal, pace, eta };
 }
 
 function streak() {
@@ -149,28 +159,36 @@ routes.today = () => {
     ${regOpen ? `<div class="card" style="background:var(--warnbg)"><b>⚠ 現在是報名期間</b>（到 ${EXAM.reg[1].slice(5).replace('-', '/')}），記得上技檢中心網站報名！</div>` : ''}
     ${regSoon ? `<div class="card" style="background:var(--warnbg)"><b>報名快到了</b>：${EXAM.reg[0].slice(5).replace('-', '/')}～${EXAM.reg[1].slice(5).replace('-', '/')}</div>` : ''}
     <h2>今日任務</h2>
+    <div class="sub" style="margin:-4px 0 6px">時間只是建議：有空就做、順序不限。今天沒做完，之後幾天會自動分攤；有空多做，之後每天就變少。</div>
     ${pl.inSprint
       ? slot('09:00', '衝刺：模擬考一回', '照考試題數計時，考完看哪裡弱', d.mock, `<a class="btn small" href="#/mock">開始</a>`)
       : slot('09:00', `學新的 ${newLeft ? newLeft + ' 題' : ''}`, topic
         ? `主題：${esc(topic.name)}${NOTES[topic.code] ? `　<a href="#/note/${topic.code}">先看重點</a>` : ''}`
         : '題庫都讀過一輪了 🎉', newLeft === 0,
-        newLeft ? `<button class="btn small" onclick="startNew()">開始</button>` : '')}
+        newLeft ? `<button class="btn small" onclick="startNew()">開始</button>`
+          : pl.left.length ? `<button class="btn small ghost" onclick="startNew(10)">超前多學 10 題</button>` : '')}
     ${slot('14:00', `刷題＋錯題 ${due.length ? due.length + ' 題' : ''}`,
       due.length ? '快忘的、答錯的，現在補回來' : '今天到期的都複習完了', due.length === 0 && (d.r > 0 || d.n > 0),
-      due.length ? `<button class="btn small" onclick="startReview()">開始</button>` : '')}
+      due.length ? `<button class="btn small" onclick="startReview()">開始</button>`
+        : earlyIds().length ? `<button class="btn small ghost" onclick="startEarly()">提前複習 ${earlyIds().length} 題</button>` : '')}
     ${slot('22:00', '睡前用聽的', '把今天讀的再聽一遍', d.listened,
       `<a class="btn small ghost" href="#/listen/today">播放</a>`)}
     <div class="card sub">今天：新學 ${d.n} 題、複習 ${d.r} 題，答對 ${d.ok}、答錯 ${d.ng}。
-      ${pl.inSprint ? '' : `<br>照進度每天學 ${pl.target} 題新的，${pl.sprint.replace(/-/g, '/')} 起進入考前衝刺。`}</div>
+      ${pl.inSprint ? '' : `<br>目標 ${pl.goal.slice(5).replace('-', '/')} 讀完第一輪，現在每天學 ${pl.target} 題新的；${pl.sprint.replace(/-/g, '/')} 起考前衝刺。`}
+      ${pl.eta && !pl.inSprint ? `<br>照你最近 7 天的速度（每天約 ${Math.round(pl.pace)} 題），預計 <b>${pl.eta.slice(5).replace('-', '/')}</b> 讀完第一輪，${pl.eta <= pl.goal ? `比目標早 ${daysBetween(pl.eta, pl.goal)} 天 👍` : `比目標晚 ${daysBetween(pl.goal, pl.eta)} 天，有空可以按「超前多學」`}。` : ''}</div>
   `;
 };
-window.startNew = () => {
+window.startNew = extra => {
   const pl = plan();
-  const n = Math.max(1, pl.target - pl.doneToday);
+  const n = extra || Math.max(1, pl.target - pl.doneToday);
   const first = BY_ID[pl.left[0]];
   // 一次只學同一個主題，不夠就到下一個主題
   startQuiz({ title: '學新的：' + TOPICS[first.topic].name, ids: pl.left.slice(0, n), mode: 'learn' });
 };
+// 有空時把後兩天才到期的先複習掉
+// （今天才答過的不算，隔一天再複習記得比較牢）
+const earlyIds = () => dueIds(addDays(today(), 2)).filter(id => ymd(new Date(P.q[id].t || 0)) !== today());
+window.startEarly = () => startQuiz({ title: '提前複習', ids: earlyIds().slice(0, 30), mode: 'review' });
 window.startReview = () => startQuiz({ title: '刷題＋錯題', ids: dueIds().slice(0, 40), mode: 'review' });
 
 /* ---------- 練習 ---------- */
@@ -540,6 +558,7 @@ routes.me = () => {
       <label class="row"><span class="grow">做題時自動念題目和解說</span><input type="checkbox" ${P.set.autoRead ? 'checked' : ''} onchange="P.set.autoRead=this.checked;save()"></label>
       <div class="row" style="margin-top:10px"><span class="grow">念的速度</span><select style="width:auto" onchange="P.set.rate=+this.value;save()">${[0.8, 0.9, 1, 1.1, 1.2, 1.4].map(r => `<option ${P.set.rate === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
       <div class="row" style="margin-top:10px"><span class="grow">字體大小</span><select style="width:auto" onchange="P.set.font=+this.value;save();applyFont()">${[[17, '標準'], [19, '大'], [21, '特大']].map(([v, t]) => `<option value="${v}" ${P.set.font === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="row" style="margin-top:10px"><span class="grow">第一輪讀完的目標日</span><select style="width:auto" onchange="P.set.goal=this.value;save()">${[['2026-12-31', '12/31'], ['2027-01-15', '1/15'], ['2027-01-31', '1/31（建議）'], ['2027-02-14', '2/14'], ['2027-02-20', '2/20（最晚）']].map(([v, t]) => `<option value="${v}" ${P.set.goal === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <label class="row" style="margin-top:10px"><span class="grow">選項順序打亂（避免背位置）</span><input type="checkbox" ${P.set.shuffle ? 'checked' : ''} onchange="P.set.shuffle=this.checked;save()"></label>
     </div>
     <h2>備份</h2>
@@ -575,7 +594,16 @@ async function boot() {
     (TOPICS[q.topic] = TOPICS[q.topic] || { code: q.topic, name: q.topicName, qs: [] }).qs.push(q);
   }
   render();
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update(); });
+    });
+    // 新版接手後自動重新整理一次（作答中不打斷）
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded || S) return; reloaded = true; location.reload();
+    });
+  }
 }
 // 給 sync.js 用
 window.OSH = { get P() { return P; }, set P(x) { P = x; }, save, render, blank };
