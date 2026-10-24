@@ -444,12 +444,18 @@ const Speech = {
       .replace(/℃/g, '度C').replace(/m3|m³/g, '立方公尺').replace(/mg\/m3/g, '毫克每立方公尺').replace(/％|%/g, '%');
   },
   // parts：字串或 {wait:秒}，一段一段念，念完呼叫 done
+  // 每次 say 有自己的編號；換題時舊的那串念到一半被取消，iPhone 還是會觸發 onend，
+  // 靠編號擋掉，舊的就不會接著念下去
+  gen: 0,
   say(parts, done) {
     if (!window.speechSynthesis) return toast('這台裝置不支援朗讀');
+    const my = ++this.gen;
+    clearTimeout(this.timer);
+    const busy = speechSynthesis.speaking || speechSynthesis.pending;
     speechSynthesis.cancel();
     const list = parts.slice();
     const next = () => {
-      if (this.stopped) return;
+      if (my !== this.gen) return;
       const p = list.shift();
       if (p === undefined) return done && done();
       if (typeof p === 'object') { this.timer = setTimeout(next, p.wait * 1000); return; }
@@ -458,13 +464,14 @@ const Speech = {
       u.onend = next; u.onerror = next;
       speechSynthesis.speak(u);
     };
-    this.stopped = false; clearTimeout(this.timer); next();
+    // iPhone 剛取消完馬上念，有時會被吃掉，停一下再開始
+    if (busy) this.timer = setTimeout(next, 250); else next();
   },
   unlock() {
     if (!window.speechSynthesis || this.unlocked) return;
     const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); this.unlocked = true;
   },
-  stop() { this.stopped = true; clearTimeout(this.timer); if (window.speechSynthesis) speechSynthesis.cancel(); },
+  stop() { this.gen++; clearTimeout(this.timer); if (window.speechSynthesis) speechSynthesis.cancel(); },
 };
 function qParts(q, withAns, withOpts = true) {
   const parts = [q.q];

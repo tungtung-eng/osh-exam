@@ -1,7 +1,7 @@
 /* 離線可用＋改版馬上生效：
    程式和題目資料「先上網抓最新的」（3 秒抓不到才用手機裡的備份）；
    法規全文、圖片很少變，直接用備份。VER 由 tools/build.py 自動更新。 */
-const VER = 'osh-202610241753';
+const VER = 'osh-202610241802';
 const FILES = ['./', 'index.html', 'app.js', 'calc.js', 'sync.js', 'config.js', 'manifest.webmanifest',
   'icon-180.png', 'icon-512.png', 'data/bank.json', 'data/explain.json', 'data/notes.json', 'data/refs.json', 'data/laws.json',
   'img/90008-03-013.png', 'img/90009-04-002.png'];
