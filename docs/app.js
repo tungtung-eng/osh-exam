@@ -121,17 +121,19 @@ function streak() {
 
 /* ---------- 畫面路由 ---------- */
 const routes = {};
-function go(h) { location.hash = h; }
+// 換頁：改網址後直接畫（不只靠 hashchange 通知，iPhone 偶爾會漏掉，按了沒反應）
+function go(h) { location.hash = h; if (render.hash !== location.hash) render(); }
 function render() {
   const [, name, arg] = (location.hash || '#/today').split('/');
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === name ||
     (a.dataset.tab === 'practice' && ['topic', 'quiz', 'note', 'mock', 'laws', 'law'].includes(name))));
   if (name !== render.last && name !== 'listen' && window.speechSynthesis) Speech.stop();
   render.last = name;
+  render.hash = location.hash;
   (routes[name] || routes.today)(arg ? decodeURIComponent(arg) : undefined);
   window.scrollTo(0, 0);
 }
-window.addEventListener('hashchange', render);
+window.addEventListener('hashchange', () => { if (render.hash !== location.hash) render(); });
 
 /* ---------- 今天 ---------- */
 routes.today = () => {
@@ -414,10 +416,11 @@ routes.mock = () => {
     <div class="card">單選 60 題（專業 44＋共同科目 16）、複選 20 題，100 分鐘。<br>
       單選每題 1 分、複選每題 2 分（全對才給分），60 分及格。<br>
       <span class="sub">題目照各主題題庫比例抽，考完才對答案。</span></div>
-    <button class="btn wide" onclick="startMock()">開始（計時 100 分鐘）</button>
+    <button class="btn wide" onclick="startMock()">考試模式：計時 100 分鐘，考完才對答案</button>
+    <button class="btn wide ghost" onclick="startMock(true)">練習模式：不計時，每題馬上對答案、念解說</button>
     ${hist.length ? `<h2>最近成績</h2><div class="card"><table>${hist.map(h => `<tr><td>${h.d}</td><td style="color:${h.s >= 60 ? 'var(--ok)' : 'var(--ng)'}">${h.s} 分</td></tr>`).join('')}</table></div>` : ''}`;
 };
-window.startMock = () => {
+window.startMock = practice => {
   const pro = BANK.filter(q => q.subj === '22200');
   const pick = (arr, n) => shuffle(arr).slice(0, n).map(q => q.id);
   const ids = [
@@ -425,7 +428,7 @@ window.startMock = () => {
     ...['90006', '90007', '90008', '90009'].flatMap(s => pick(BANK.filter(q => q.subj === s), 4)),
     ...pick(pro.filter(q => q.multi), 20),
   ];
-  startQuiz({ title: '模擬考', ids, mode: 'mock' });
+  startQuiz(practice ? { title: '模擬練習', ids, mode: 'free' } : { title: '模擬考', ids, mode: 'mock' });
 };
 
 /* ---------- 朗讀 ---------- */
