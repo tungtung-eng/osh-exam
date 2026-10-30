@@ -24,6 +24,8 @@
   }
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+/* 按鈕、選項、分頁不會被滑鼠拖曳或連點反白（題目和解說文字還是可以選取複製） */
+.btn,.opt,nav,.top,.pill,.slot .time{-webkit-user-select:none;user-select:none}
 html,body{margin:0;background:var(--bg);color:var(--ink);
   font:var(--fs,17px)/1.65 -apple-system,"PingFang TC","Microsoft JhengHei",sans-serif}
 body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
