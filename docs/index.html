@@ -77,6 +77,26 @@ nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px
 nav a{flex:1;text-align:center;padding:8px 0 6px;color:var(--sub);text-decoration:none;font-size:12px}
 nav a span{display:block;font-size:22px;line-height:1.2}
 nav a.on{color:var(--main);font-weight:700}
+/* 圖解教室 */
+.vz{padding:10px}
+.vz [data-k]{opacity:0;transition:opacity .55s ease,transform .55s ease}
+.vz [data-k].on{opacity:1}
+.vz [data-fx=growx]{transform-box:fill-box;transform-origin:left center;transform:scaleX(0)}
+.vz [data-fx=growy]{transform-box:fill-box;transform-origin:center bottom;transform:scaleY(0)}
+.vz [data-fx=pop]{transform-box:fill-box;transform-origin:center;transform:scale(.4)}
+.vz [data-fx].on,.vz .on [data-fx]{transform:none}
+.vz text{font-family:inherit}
+.vzsay{min-height:3.4em;font-size:1.05em;background:var(--main2);border-radius:12px;padding:10px 14px;margin:10px 0}
+.vzsay:empty{display:none}
+.vzdots{text-align:center;margin:4px 0 10px}.vzdots:empty{display:none}
+.vzdots i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--line);margin:0 3px}
+.vzdots i.on{background:var(--main)}
+.vzgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.vzladder{display:grid;gap:8px}
+.vzc{border:2px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.9em;line-height:1.55}
+.vzc>b:first-child{display:block;font-size:1.05em;margin-bottom:4px}
+.vzbig{font-size:1.6em;font-weight:800;color:var(--ng)}
+@media (max-width:420px){.vzgrid{grid-template-columns:1fr}}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ink);color:var(--bg);
   padding:8px 16px;border-radius:99px;font-size:14px;z-index:9}
 </style>
@@ -94,5 +114,7 @@ nav a.on{color:var(--main);font-weight:700}
 <script src="app.js"></script>
 <script src="calc.js"></script>
 <script src="sync.js"></script>
+<script src="visuals.js"></script>
+<script src="vis-data.js"></script>
 </body>
 </html>

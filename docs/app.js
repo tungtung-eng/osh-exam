@@ -126,7 +126,7 @@ function go(h) { location.hash = h; if (render.hash !== location.hash) render();
 function render() {
   const [, name, arg] = (location.hash || '#/today').split('/');
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === name ||
-    (a.dataset.tab === 'practice' && ['topic', 'quiz', 'note', 'mock', 'laws', 'law', 'weak'].includes(name))));
+    (a.dataset.tab === 'practice' && ['topic', 'quiz', 'note', 'mock', 'laws', 'law', 'weak', 'vis'].includes(name))));
   if (name !== render.last && name !== 'listen' && window.speechSynthesis) Speech.stop();
   render.last = name;
   render.hash = location.hash;
@@ -211,6 +211,7 @@ routes.practice = () => {
       <button class="btn ghost grow" ${wr.length ? '' : 'disabled'} onclick="startQuiz({title:'錯題本',ids:wrongIds(),mode:'review'})">❌ 錯題本 ${wr.length}</button>
     </div>
     <a class="btn wide ghost" href="#/weak">📊 我的易錯題（看哪裡最常錯）</a>
+    <a class="btn wide ghost" href="#/vis">🎬 圖解教室（動畫＋語音、圖解卡）</a>
     <a class="btn wide ghost" href="#/laws">📖 法規條文查詢（${'45'} 部，離線可看）</a>
     <h2>依主題</h2><div class="list">${rows}</div>`;
 };
@@ -350,6 +351,7 @@ routes.quiz = () => {
     ${judged ? `<div class="fb ${S.res[S.i] ? 'ok' : 'ng'}">
         <b>${S.res[S.i] ? '✔ 答對了' : '✘ 答錯了'}</b>　正確答案：${right}
         ${ex ? `<div class="explain" style="margin-top:8px">${esc(ex)}</div>` : ''}
+        ${window.VZ && VZ.BY_Q[id] ? `<div style="margin-top:8px"><a class="btn small" href="#/vis/${VZ.BY_Q[id][0]}">🎬 看圖解</a></div>` : ''}
         ${REFS[id] ? `<div style="margin-top:8px">📖 ${REFS[id][2] < 40 ? '可能相關：' : ''}<b>${esc(REFS[id][0])} ${esc(REFS[id][1])}</b>
             <button class="btn small ghost" onclick="showRef('${id}',this)">看條文</button></div>`
         : law ? `<div class="sub" style="margin-top:8px">📖 <a href="${lawLink(law)}" target="_blank" rel="noopener">查「${esc(law)}」條文</a></div>` : ''}
