@@ -498,8 +498,8 @@ const Speech = {
   gen: 0,
   say(parts, done) {
     if (!window.speechSynthesis) return toast('這台裝置不支援朗讀');
+    this.keepAlive();   // 先讓無聲音樂播起來，再開始念（順序不能反）
     if (!this.unlocked) this.unlock();
-    this.keepAlive();
     const my = ++this.gen;
     clearTimeout(this.timer);
     // iPhone 要「按按鈕那一下」先出過聲音才肯念（unlock）；這時正在念的只是那個無聲的解鎖音，
@@ -538,6 +538,7 @@ const Speech = {
     if (this.bg.paused) this.bg.play().catch(() => { });
   },
   unlock() {
+    this.keepAlive();
     if (!window.speechSynthesis || this.unlocked) return;
     const u = new SpeechSynthesisUtterance(' '); u.volume = 0; u.lang = 'zh-TW';
     u.onend = u.onerror = () => { if (this.unlockU === u) this.unlockU = null; };
