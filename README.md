@@ -21,6 +21,19 @@
 | `source/official/` | 技能檢定中心下載的原始 PDF |
 | `tools/` | 產生資料的程式 |
 
+## 朗讀聲音檔
+
+iPhone 靜音模式會關掉網頁內建朗讀，所以 App 會念的每一句都預先錄成 MP3（`docs/audio/`），
+用 Windows 內建台灣語音 Yating（`tools/tts_batch.ps1`），不用連網。檔名＝句子的 cyrb53 雜湊，
+App 找不到檔案或沒網路時，自動改用網頁朗讀。
+
+**改了題目、解說、重點、圖解旁白之後**，要補錄：
+
+```
+python tools/build.py
+python tools/build_audio.py --prune
+```
+
 ## 更新流程
 
 ```

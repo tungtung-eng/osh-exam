@@ -286,10 +286,18 @@ routes.note = code => {
     <div class="card note" id="noteBody">${n.html}</div>
     <a class="btn wide" href="#/topic/${code}">看完了，去做題</a>`;
 };
-window.speakNote = () => {
-  const txt = $('#noteBody').innerText;
-  Speech.say(txt.split(/\n+/).filter(Boolean));
-};
+window.speakNote = () => Speech.say(noteLines($('#noteBody')));
+// 重點整理一段一段念（表格一列念成一句）；tools/build_audio.py 用同樣規則切句錄音
+function noteLines(root) {
+  const out = [];
+  root.querySelectorAll('h3,p,li,tr').forEach(el => {
+    const t = el.tagName === 'TR'
+      ? [...el.children].map(c => c.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean).join('，')
+      : el.textContent.replace(/\s+/g, ' ').trim();
+    if (t) out.push(t);
+  });
+  return out;
+}
 
 /* ---------- 法規 ---------- */
 routes.laws = async kw => {
@@ -373,7 +381,7 @@ routes.quiz = () => {
 };
 function quizParts(q, ord) {
   const parts = [q.q];
-  if (!q.img) ord.forEach((o, k) => parts.push(NUM[k + 1] + '、' + q.opts[o - 1]));
+  if (!q.img) ord.forEach((o, k) => parts.push(NUM[k + 1] + '、', q.opts[o - 1]));
   if (q.multi) parts.push('這是複選題，要選兩個以上');
   return parts;
 }
@@ -384,9 +392,9 @@ window.speakCur = () => {
   const judged = S.res[S.i] !== undefined && S.mode !== 'mock';
   if (!judged) return Speech.say(quizParts(q, ord));
   const right = q.ans.map(o => ord.indexOf(o) + 1).sort();
-  const txt = (S.res[S.i] ? '答對了。' : '答錯了。') + '正確答案是' + right.map(n => NUM[n]).join('、') + '：' +
-    (q.img ? '' : right.map(n => q.opts[ord[n - 1] - 1]).join('；'));
-  Speech.say([txt, ...(EXPLAIN[id] ? [EXPLAIN[id]] : [])]);
+  Speech.say([S.res[S.i] ? '答對了。' : '答錯了。', '正確答案是',
+    ...right.flatMap(n => q.img ? [NUM[n] + '、'] : [NUM[n] + '、', q.opts[ord[n - 1] - 1]]),
+    ...(EXPLAIN[id] ? [EXPLAIN[id]] : [])]);
 };
 function tick() {
   const el = $('#clock'); if (!el || !S) return;
@@ -478,9 +486,28 @@ window.startMock = practice => {
 };
 
 /* ---------- 朗讀 ---------- */
+/* 朗讀：優先播預先錄好的聲音檔（docs/audio，tools/build_audio.py 產生），iPhone 靜音模式也聽得到；
+   沒錄到或沒網路的句子，才用網頁內建朗讀（靜音模式會被 iPhone 關掉） */
+function cyrb53(str, seed = 0) {   // 跟 tools/build_audio.py 一樣的算法，句子 → 檔名
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0, ch; i < str.length; i++) {
+    ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
 const Speech = {
   voice: null,
+  audio: null,          // {v, ids:Set}：有錄好的句子
+  player: null,         // 播聲音檔用的同一個 <audio>（iPhone 要同一個元素在按鈕當下播過，之後才能自動播）
   init() {
+    this.player = new Audio(); this.player.preload = 'auto'; this.player.setAttribute('playsinline', '');
+    fetch('audio/index.json').then(r => r.ok ? r.json() : null).then(j => { if (j) this.audio = { v: j.v, ids: new Set(j.ids) }; }).catch(() => { });
     if (!window.speechSynthesis) return;
     const pickV = () => {
       const vs = speechSynthesis.getVoices();
@@ -492,45 +519,76 @@ const Speech = {
     return String(s).replace(/①/g, '一、').replace(/②/g, '二、').replace(/③/g, '三、').replace(/④/g, '四、')
       .replace(/℃/g, '度C').replace(/m3|m³/g, '立方公尺').replace(/mg\/m3/g, '毫克每立方公尺').replace(/％|%/g, '%');
   },
+  clipOf(p) {
+    if (!this.audio) return null;
+    const id = cyrb53(this.audio.v + '|' + p);
+    return this.audio.ids.has(id) ? 'audio/' + id + '.mp3' : null;
+  },
   // parts：字串或 {wait:秒}，一段一段念，念完呼叫 done
   // 每次 say 有自己的編號；換題時舊的那串念到一半被取消，iPhone 還是會觸發 onend，
   // 靠編號擋掉，舊的就不會接著念下去
   gen: 0,
   say(parts, done) {
-    if (!window.speechSynthesis) return toast('這台裝置不支援朗讀');
     const my = ++this.gen;
     clearTimeout(this.timer);
-    // 跟 10/24 一樣：先取消正在念的，再開始念。iPhone 剛取消完馬上念會被吃掉（沒聲音），
-    // 所以「正在念」或「0.3 秒內才取消過」（例如換頁時）都等一下再念
-    const busy = speechSynthesis.speaking || speechSynthesis.pending || Date.now() - (this.lastCancel || 0) < 300;
-    speechSynthesis.cancel(); this.lastCancel = Date.now();
+    this.halt();
+    const tts = !!window.speechSynthesis;
+    // 網頁朗讀：iPhone 剛取消完馬上念會被吃掉，「正在念」或「0.3 秒內才取消過」都等一下再念
+    const busy = tts && (speechSynthesis.speaking || speechSynthesis.pending || Date.now() - (this.lastCancel || 0) < 300);
+    if (tts) { speechSynthesis.cancel(); this.lastCancel = Date.now(); }
     const list = parts.slice();
-    const next = () => {
-      if (my !== this.gen) return;
-      const p = list.shift();
-      if (p === undefined) return done && done();
-      if (typeof p === 'object') { this.timer = setTimeout(next, p.wait * 1000); return; }
+    const speakTTS = p => {
+      if (!tts) return next();
       const u = new SpeechSynthesisUtterance(this.clean(p));
       u.lang = 'zh-TW'; if (this.voice) u.voice = this.voice; u.rate = P.set.rate;
       u.onend = next; u.onerror = next;
       speechSynthesis.speak(u);
     };
-    // iPhone 剛取消完馬上念，有時會被吃掉，停一下再開始
-    if (busy) this.timer = setTimeout(next, 300); else next();
+    const next = () => {
+      if (my !== this.gen) return;
+      const p = list.shift();
+      if (p === undefined) return done && done();
+      if (typeof p === 'object') { this.timer = setTimeout(next, p.wait * 1000); return; }
+      const src = this.clipOf(p);
+      if (!src) return speakTTS(p);
+      const a = this.player;
+      let failed = false;
+      const fail = () => { if (failed || my !== this.gen) return; failed = true; speakTTS(p); };   // 抓不到檔（沒網路）就改用網頁朗讀
+      a.onended = () => { if (my === this.gen) next(); };
+      a.onerror = fail;
+      a.src = src;
+      a.defaultPlaybackRate = a.playbackRate = P.set.rate;
+      a.play().then(() => { a.playbackRate = P.set.rate; }).catch(fail);
+    };
+    // 第一句是聲音檔就馬上播（要在按按鈕的當下開始）；是網頁朗讀又剛取消過才等一下
+    const first = list.find(x => typeof x === 'string');
+    if (busy && !(first && this.clipOf(first))) this.timer = setTimeout(next, 300); else next();
+  },
+  // 停掉聲音檔（不觸發 onended）
+  halt() {
+    const a = this.player; if (!a) return;
+    a.onended = a.onerror = null;
+    try { a.pause(); } catch (e) { }
   },
   unlock() {
+    // 按按鈕的當下，讓聲音檔播放器先播一小段無聲，iPhone 之後才准自動播
+    const a = this.player;
+    if (a && !this.audioUnlocked) {
+      a.onended = a.onerror = null; a.src = 'audio/silence.mp3';
+      a.play().then(() => { this.audioUnlocked = true; }).catch(() => { });
+    }
     if (!window.speechSynthesis || this.unlocked) return;
     const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); this.unlocked = true;
   },
-  stop() { this.gen++; clearTimeout(this.timer); if (window.speechSynthesis) { speechSynthesis.cancel(); this.lastCancel = Date.now(); } },
+  stop() { this.gen++; clearTimeout(this.timer); this.halt(); if (window.speechSynthesis) { speechSynthesis.cancel(); this.lastCancel = Date.now(); } },
 };
 function qParts(q, withAns, withOpts = true) {
   const parts = [q.q];
-  if (withOpts && !q.img) q.opts.forEach((o, i) => parts.push(NUM[i + 1] + '、' + o));
-  if (q.multi) parts.push('這是複選題');
+  if (withOpts && !q.img) q.opts.forEach((o, i) => parts.push(NUM[i + 1] + '、', o));
+  if (q.multi) parts.push('這是複選題，要選兩個以上');
   if (withAns) {
     parts.push({ wait: P.set.wait });
-    parts.push('答案是' + q.ans.map(a => NUM[a]).join('、') + '。' + (q.img ? '' : q.ans.map(a => q.opts[a - 1]).join('；')));
+    parts.push('答案是', ...q.ans.flatMap(a => q.img ? [NUM[a] + '、'] : [NUM[a] + '、', q.opts[a - 1]]));
     if (EXPLAIN[q.id]) parts.push(EXPLAIN[q.id]);
   }
   return parts;
@@ -574,7 +632,7 @@ routes.listen = src => {
 function lPlay() {
   const q = BY_ID[L.ids[L.i]];
   if (!q) { L.playing = false; return render(); }
-  Speech.say([`第${L.i + 1}題`, ...qParts(q, true)], () => {
+  Speech.say([...(L.i ? ['下一題'] : []), ...qParts(q, true)], () => {
     if (!L.playing) return;
     if (L.src === 'today') { day().listened = 1; save(); }
     if (L.i + 1 < L.ids.length) { L.i++; render(); lPlay(); }
