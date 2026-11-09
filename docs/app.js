@@ -498,15 +498,12 @@ const Speech = {
   gen: 0,
   say(parts, done) {
     if (!window.speechSynthesis) return toast('這台裝置不支援朗讀');
-    this.keepAlive();   // 先讓無聲音樂播起來，再開始念（順序不能反）
-    if (!this.unlocked) this.unlock();
     const my = ++this.gen;
     clearTimeout(this.timer);
-    // iPhone 要「按按鈕那一下」先出過聲音才肯念（unlock）；這時正在念的只是那個無聲的解鎖音，
-    // 不能把它取消掉（取消了等於沒解鎖，後面整段都不會出聲），直接排在它後面念
-    const onlyUnlock = this.unlockU && (speechSynthesis.speaking || speechSynthesis.pending);
-    const busy = !onlyUnlock && (speechSynthesis.speaking || speechSynthesis.pending);
-    if (!onlyUnlock) speechSynthesis.cancel();
+    // 跟 10/24 一樣：先取消正在念的，再開始念。iPhone 剛取消完馬上念會被吃掉（沒聲音），
+    // 所以「正在念」或「0.3 秒內才取消過」（例如換頁時）都等一下再念
+    const busy = speechSynthesis.speaking || speechSynthesis.pending || Date.now() - (this.lastCancel || 0) < 300;
+    speechSynthesis.cancel(); this.lastCancel = Date.now();
     const list = parts.slice();
     const next = () => {
       if (my !== this.gen) return;
@@ -519,34 +516,13 @@ const Speech = {
       speechSynthesis.speak(u);
     };
     // iPhone 剛取消完馬上念，有時會被吃掉，停一下再開始
-    if (busy) this.timer = setTimeout(next, 250); else next();
-  },
-  // iPhone 靜音模式下網頁朗讀會被關掉；同時放一段無聲音樂，讓整頁變成「播放音樂」模式，
-  // 就跟音樂 App 一樣，靜音開關打開也聽得到
-  keepAlive() {
-    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { }
-    if (!this.bg) {
-      const n = 8000, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
-      const w = (o, t) => [...t].forEach((c, i) => b[o + i] = c.charCodeAt(0));
-      w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
-      v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true);
-      v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true); b.fill(128, 44);
-      this.bg = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' })));
-      this.bg.loop = true; this.bg.setAttribute('playsinline', '');
-      document.addEventListener('visibilitychange', () => { if (document.hidden) this.bg.pause(); });
-    }
-    if (this.bg.paused) this.bg.play().catch(() => { });
+    if (busy) this.timer = setTimeout(next, 300); else next();
   },
   unlock() {
-    this.keepAlive();
     if (!window.speechSynthesis || this.unlocked) return;
-    const u = new SpeechSynthesisUtterance(' '); u.volume = 0; u.lang = 'zh-TW';
-    u.onend = u.onerror = () => { if (this.unlockU === u) this.unlockU = null; };
-    this.unlockU = u; speechSynthesis.speak(u); this.unlocked = true;
-    setTimeout(() => { if (this.unlockU === u) this.unlockU = null; }, 1500);   // 有些手機空白句不會觸發 onend
+    const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); this.unlocked = true;
   },
-  // 停止朗讀；但無聲的解鎖音還在播時不要取消它（iPhone 會因此整段都不出聲），只讓舊的那串不再接下去
-  stop() { this.gen++; clearTimeout(this.timer); if (window.speechSynthesis && !this.unlockU) speechSynthesis.cancel(); },
+  stop() { this.gen++; clearTimeout(this.timer); if (window.speechSynthesis) { speechSynthesis.cancel(); this.lastCancel = Date.now(); } },
 };
 function qParts(q, withAns, withOpts = true) {
   const parts = [q.q];
