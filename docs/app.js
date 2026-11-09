@@ -12,6 +12,7 @@ const MASTER = 4;                           // 到第 4 格算「熟了」
 const SPRINT_DAYS = 21;                     // 考前 3 週衝刺：不學新的，只複習＋模擬考
 const NUM = ['', '一', '二', '三', '四'];
 const MARK = ['', '①', '②', '③', '④'];
+const RATES = [0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.6];
 
 let BANK = [], BY_ID = {}, TOPICS = {}, EXPLAIN = {}, NOTES = {}, REFS = {}, LAWS = null;
 let P;          // 進度
@@ -47,10 +48,12 @@ window.showRef = async (id, el) => {
 };
 
 /* ---------- 進度 ---------- */
-function blank() { return { v: 1, q: {}, days: {}, set: { rate: 1, wait: 4, readOpts: true, shuffle: true, autoRead: true, font: 17, goal: '2027-01-31' }, upd: 0 }; }
+function blank() { return { v: 1, q: {}, days: {}, set: { rate: 1.2, wait: 4, readOpts: true, shuffle: true, autoRead: true, font: 17, goal: '2027-01-31' }, upd: 0 }; }
 function load() {
   try { P = Object.assign(blank(), JSON.parse(localStorage.getItem('oshP') || '{}')); } catch (e) { P = blank(); }
   P.set = Object.assign(blank().set, P.set);
+  // 東東 11/9：預設語速太慢，沒改過的（還是 1）一次調成 1.2
+  if (!P.set.rateV) { if (P.set.rate === 1) P.set.rate = 1.2; P.set.rateV = 1; }
 }
 function save() {
   P.upd = Date.now();
@@ -560,7 +563,7 @@ routes.listen = src => {
       <button class="btn ghost" onclick="lMove(1)">⏭</button>
     </div>
     <div class="card">
-      <div class="row"><span class="grow">語速</span><select style="width:auto" onchange="P.set.rate=+this.value;save()">${[0.8, 0.9, 1, 1.1, 1.2, 1.4].map(r => `<option ${P.set.rate === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+      <div class="row"><span class="grow">語速</span><select style="width:auto" onchange="P.set.rate=+this.value;save()">${RATES.map(r => `<option ${P.set.rate === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
       <div class="row" style="margin-top:8px"><span class="grow">想答案的時間（秒）</span><select style="width:auto" onchange="P.set.wait=+this.value;save();render()">${[2, 3, 4, 6, 8, 10].map(r => `<option ${P.set.wait === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
       <div class="sub" style="margin-top:8px">iPhone 鎖螢幕後朗讀會停，開車聽請讓螢幕保持亮著。</div>
     </div>`;
@@ -608,7 +611,7 @@ routes.me = () => {
     <h2>設定</h2>
     <div class="card">
       <label class="row"><span class="grow">做題時自動念題目和解說</span><input type="checkbox" ${P.set.autoRead ? 'checked' : ''} onchange="P.set.autoRead=this.checked;save()"></label>
-      <div class="row" style="margin-top:10px"><span class="grow">念的速度</span><select style="width:auto" onchange="P.set.rate=+this.value;save()">${[0.8, 0.9, 1, 1.1, 1.2, 1.4].map(r => `<option ${P.set.rate === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+      <div class="row" style="margin-top:10px"><span class="grow">念的速度</span><select style="width:auto" onchange="P.set.rate=+this.value;save()">${RATES.map(r => `<option ${P.set.rate === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
       <div class="row" style="margin-top:10px"><span class="grow">字體大小</span><select style="width:auto" onchange="P.set.font=+this.value;save();applyFont()">${[[17, '標準'], [19, '大'], [21, '特大']].map(([v, t]) => `<option value="${v}" ${P.set.font === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <div class="row" style="margin-top:10px"><span class="grow">第一輪讀完的目標日</span><select style="width:auto" onchange="P.set.goal=this.value;save()">${[['2026-12-31', '12/31'], ['2027-01-15', '1/15'], ['2027-01-31', '1/31（建議）'], ['2027-02-14', '2/14'], ['2027-02-20', '2/20（最晚）']].map(([v, t]) => `<option value="${v}" ${P.set.goal === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <label class="row" style="margin-top:10px"><span class="grow">選項順序打亂（避免背位置）</span><input type="checkbox" ${P.set.shuffle ? 'checked' : ''} onchange="P.set.shuffle=this.checked;save()"></label>

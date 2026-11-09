@@ -102,6 +102,8 @@ window.VZ = (() => {
         <button class="btn grow" id="vzPlay" onclick="vzToggle()"></button>
         ${L.kind === 'anim' ? '<button class="btn ghost" onclick="vzMove(1)">⏭</button>' : ''}
       </div>
+      <div class="row sub" style="justify-content:flex-end;margin:6px 0">語速
+        <select style="width:auto;padding:4px 8px" onchange="P.set.rate=+this.value;save()">${RATES.map(r => `<option ${P.set.rate === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
       ${L.kind === 'card' ? `<div class="card note">${L.steps.map(s => `<p>• ${esc(s.say)}</p>`).join('')}</div>` : ''}
       ${L.qs && L.qs.length ? `<button class="btn wide ghost" onclick="startQuiz({title:'圖解相關題目',ids:${JSON.stringify(L.qs)},mode:'free'})">練這張圖相關的 ${L.qs.length} 題</button>` : ''}
       ${nxt ? `<a class="btn wide ghost" href="#/vis/${nxt.id}">下一張：${esc(nxt.title)} ›</a>` : ''}`;
