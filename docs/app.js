@@ -126,7 +126,7 @@ function go(h) { location.hash = h; if (render.hash !== location.hash) render();
 function render() {
   const [, name, arg] = (location.hash || '#/today').split('/');
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === name ||
-    (a.dataset.tab === 'practice' && ['topic', 'quiz', 'note', 'mock', 'laws', 'law'].includes(name))));
+    (a.dataset.tab === 'practice' && ['topic', 'quiz', 'note', 'mock', 'laws', 'law', 'weak'].includes(name))));
   if (name !== render.last && name !== 'listen' && window.speechSynthesis) Speech.stop();
   render.last = name;
   render.hash = location.hash;
@@ -210,9 +210,49 @@ routes.practice = () => {
       <button class="btn grow" onclick="go('#/mock')">📝 模擬考</button>
       <button class="btn ghost grow" ${wr.length ? '' : 'disabled'} onclick="startQuiz({title:'錯題本',ids:wrongIds(),mode:'review'})">❌ 錯題本 ${wr.length}</button>
     </div>
+    <a class="btn wide ghost" href="#/weak">📊 我的易錯題（看哪裡最常錯）</a>
     <a class="btn wide ghost" href="#/laws">📖 法規條文查詢（${'45'} 部，離線可看）</a>
     <h2>依主題</h2><div class="list">${rows}</div>`;
 };
+
+/* ---------- 我的易錯題：主題排行＋題目排行 ---------- */
+routes.weak = () => {
+  const stats = ORDER.filter(c => TOPICS[c]).map(c => {
+    let right = 0, wrong = 0, wrongQs = 0, seenQs = 0;
+    for (const q of TOPICS[c].qs) {
+      const r = P.q[q.id]; if (!r) continue;
+      seenQs++; right += r.r; wrong += r.w; if (r.w) wrongQs++;
+    }
+    const n = right + wrong;
+    return { c, name: TOPICS[c].name, right, wrong, wrongQs, seenQs, rate: n ? wrong / n : 0, n };
+  }).filter(x => x.n);
+  // 錯誤率高的排前面；作答少於 5 次的不太準，排後面
+  stats.sort((a, b) => (b.n >= 5) - (a.n >= 5) || b.rate - a.rate || b.wrong - a.wrong);
+  const qs = BANK.filter(q => P.q[q.id]?.w).sort((a, b) => P.q[b.id].w - P.q[a.id].w || P.q[a.id].r - P.q[b.id].r);
+  const pct = x => Math.round(x * 100);
+  $('#app').innerHTML = `
+    <div class="top"><a href="#/practice">‹ 練習</a></div>
+    <h1>我的易錯題</h1>
+    ${!stats.length ? '<div class="card sub">還沒有作答紀錄，先去做幾題吧。</div>' : `
+    <div class="card sub">錯誤率＝答錯次數 ÷ 總作答次數。作答少於 5 次的主題還不準，排在後面。</div>
+    <h2>主題排行</h2>
+    ${stats.map((x, i) => `<div class="card">
+      <div class="row"><b class="grow">${i + 1}. ${esc(x.name)}</b>
+        <span class="pill ${x.rate >= 0.3 ? 'ng' : x.rate >= 0.15 ? 'warn' : ''}">錯 ${pct(x.rate)}%</span></div>
+      <div class="bar" style="margin:6px 0 2px"><i style="width:${pct(x.rate)}%;background:var(--ng)"></i></div>
+      <div class="row"><span class="sub grow">讀過 ${x.seenQs} 題，其中 ${x.wrongQs} 題錯過；共答 ${x.n} 次、錯 ${x.wrong} 次${x.n < 5 ? '（還不準）' : ''}</span>
+        ${x.wrongQs ? `<button class="btn small ghost" onclick="weakTopic('${x.c}')">練錯過的</button>` : ''}</div>
+    </div>`).join('')}
+    <h2>錯最多次的題目</h2>
+    ${qs.length ? `<button class="btn wide" onclick="startQuiz({title:'易錯題',ids:${JSON.stringify(qs.slice(0, 20).map(q => q.id))},mode:'review'})">把前 ${Math.min(20, qs.length)} 題再練一次</button>
+    <div class="card">${qs.slice(0, 30).map(q => {
+      const r = P.q[q.id];
+      return `<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)">
+        <span class="grow" style="font-size:.9em">${esc(q.q.slice(0, 50))}${q.q.length > 50 ? '…' : ''}<br><span class="sub">${esc(q.topicName)}</span></span>
+        <span class="pill ng">錯 ${r.w}</span>${mastered(q.id) ? '<span class="pill">已熟</span>' : ''}</div>`;
+    }).join('')}</div>` : '<div class="card sub">目前沒有答錯的題目 👍</div>'}`}`;
+};
+window.weakTopic = c => startQuiz({ title: '錯過的：' + TOPICS[c].name, ids: shuffle(TOPICS[c].qs.filter(q => P.q[q.id]?.w).map(q => q.id)).slice(0, 30), mode: 'review' });
 
 routes.topic = code => {
   const tp = TOPICS[code]; if (!tp) return go('#/practice');
