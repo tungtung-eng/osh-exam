@@ -12,7 +12,7 @@ const MASTER = 4;                           // 到第 4 格算「熟了」
 const SPRINT_DAYS = 21;                     // 考前 3 週衝刺：不學新的，只複習＋模擬考
 const NUM = ['', '一', '二', '三', '四'];
 const MARK = ['', '①', '②', '③', '④'];
-const RATES = [0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.6];
+const RATES = [0.9, 1, 1.05, 1.1, 1.15, 1.2, 1.3, 1.4];
 
 let BANK = [], BY_ID = {}, TOPICS = {}, EXPLAIN = {}, NOTES = {}, REFS = {}, LAWS = null;
 let P;          // 進度
@@ -48,12 +48,13 @@ window.showRef = async (id, el) => {
 };
 
 /* ---------- 進度 ---------- */
-function blank() { return { v: 1, q: {}, days: {}, set: { rate: 1.2, wait: 4, readOpts: true, shuffle: true, autoRead: true, font: 17, goal: '2027-01-31' }, upd: 0 }; }
+function blank() { return { v: 1, q: {}, days: {}, set: { rate: 1.1, wait: 4, readOpts: true, shuffle: true, autoRead: true, font: 17, goal: '2027-01-31' }, upd: 0 }; }
 function load() {
   try { P = Object.assign(blank(), JSON.parse(localStorage.getItem('oshP') || '{}')); } catch (e) { P = blank(); }
   P.set = Object.assign(blank().set, P.set);
   // 東東 11/9：預設語速太慢，沒改過的（還是 1）一次調成 1.2
-  if (!P.set.rateV) { if (P.set.rate === 1) P.set.rate = 1.2; P.set.rateV = 1; }
+  // 11/9 東東：1.2 又太快 → 自動調過的（1 或 1.2）改成 1.1；自己選過別的就不動
+  if ((P.set.rateV || 0) < 2) { if (P.set.rate === 1 || P.set.rate === 1.2) P.set.rate = 1.1; P.set.rateV = 2; }
 }
 function save() {
   P.upd = Date.now();
