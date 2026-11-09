@@ -499,8 +499,11 @@ const Speech = {
     if (!window.speechSynthesis) return toast('這台裝置不支援朗讀');
     const my = ++this.gen;
     clearTimeout(this.timer);
-    const busy = speechSynthesis.speaking || speechSynthesis.pending;
-    speechSynthesis.cancel();
+    // iPhone 要「按按鈕那一下」先出過聲音才肯念（unlock）；這時正在念的只是那個無聲的解鎖音，
+    // 不能把它取消掉（取消了等於沒解鎖，後面整段都不會出聲），直接排在它後面念
+    const onlyUnlock = this.unlockU && (speechSynthesis.speaking || speechSynthesis.pending);
+    const busy = !onlyUnlock && (speechSynthesis.speaking || speechSynthesis.pending);
+    if (!onlyUnlock) speechSynthesis.cancel();
     const list = parts.slice();
     const next = () => {
       if (my !== this.gen) return;
@@ -517,9 +520,13 @@ const Speech = {
   },
   unlock() {
     if (!window.speechSynthesis || this.unlocked) return;
-    const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); this.unlocked = true;
+    const u = new SpeechSynthesisUtterance(' '); u.volume = 0; u.lang = 'zh-TW';
+    u.onend = u.onerror = () => { if (this.unlockU === u) this.unlockU = null; };
+    this.unlockU = u; speechSynthesis.speak(u); this.unlocked = true;
+    setTimeout(() => { if (this.unlockU === u) this.unlockU = null; }, 1500);   // 有些手機空白句不會觸發 onend
   },
-  stop() { this.gen++; clearTimeout(this.timer); if (window.speechSynthesis) speechSynthesis.cancel(); },
+  // 停止朗讀；但無聲的解鎖音還在播時不要取消它（iPhone 會因此整段都不出聲），只讓舊的那串不再接下去
+  stop() { this.gen++; clearTimeout(this.timer); if (window.speechSynthesis && !this.unlockU) speechSynthesis.cancel(); },
 };
 function qParts(q, withAns, withOpts = true) {
   const parts = [q.q];
