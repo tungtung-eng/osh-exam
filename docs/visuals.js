@@ -65,7 +65,7 @@ window.VZ = (() => {
     }
     Speech.say([L.steps[i].say], () => {
       if (!cur || !cur.playing) return;
-      if (i + 1 < L.steps.length) setTimeout(() => cur && cur.playing && playFrom(i + 1), 500);
+      if (i + 1 < L.steps.length) setTimeout(() => cur && cur.playing && playFrom(i + 1), 250);
       else { cur.playing = false; apply(i); }
     });
   }
@@ -89,6 +89,7 @@ window.VZ = (() => {
     if (!L) return list();
     Speech.stop();   // 從上一課直接跳過來時，先停掉上一課的聲音
     cur = { lesson: L, i: 0, playing: false };
+    Speech.prefetch(L.steps.map(x => x.say));   // 旁白先下載，播的時候不用等
     const sameTopic = LESSONS.filter(x => x.topic === L.topic);
     const idx = sameTopic.indexOf(L), nxt = sameTopic[idx + 1];
     $('#app').innerHTML = `

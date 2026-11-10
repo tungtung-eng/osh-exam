@@ -48,7 +48,7 @@ window.showRef = async (id, el) => {
 };
 
 /* ---------- 進度 ---------- */
-function blank() { return { v: 1, q: {}, days: {}, set: { rate: 1.1, wait: 4, readOpts: true, shuffle: true, autoRead: true, font: 17, goal: '2027-01-31' }, upd: 0 }; }
+function blank() { return { v: 1, q: {}, days: {}, set: { rate: 1.1, wait: 4, readOpts: true, shuffle: true, autoRead: true, voice: 'rec', font: 17, goal: '2027-01-31' }, upd: 0 }; }
 function load() {
   try { P = Object.assign(blank(), JSON.parse(localStorage.getItem('oshP') || '{}')); } catch (e) { P = blank(); }
   P.set = Object.assign(blank().set, P.set);
@@ -377,7 +377,14 @@ routes.quiz = () => {
   if (S.mode === 'mock') tick();
   // 自動朗讀：新的一題念題目；答完念對錯和解說（同一個狀態只念一次）
   const key = S.i + (judged ? 'a' : 'q');
-  if (P.set.autoRead && S.spoken !== key) { S.spoken = key; speakCur(); }
+  if (P.set.autoRead && S.spoken !== key) {
+    S.spoken = key;
+    // 已經出過聲音之後，先讓畫面換好再念（按下去馬上有反應）；第一次要搶在按按鈕的當下念，iPhone 才准出聲
+    if (Speech.warm) { const g = S, at = S.i; setTimeout(() => { if (S === g && S.i === at) speakCur(); }, 30); }
+    else speakCur();
+  }
+  const pre = qid => { const x = BY_ID[qid]; return x ? [x.q, ...(x.img ? [] : x.opts), ...(EXPLAIN[qid] ? [EXPLAIN[qid]] : [])] : []; };
+  Speech.prefetch([...pre(id), ...pre(S.ids[S.i + 1])]);
 };
 function quizParts(q, ord) {
   const parts = [q.q];
@@ -505,9 +512,15 @@ const Speech = {
   voice: null,
   audio: null,          // {v, ids:Set}：有錄好的句子
   player: null,         // 播聲音檔用的同一個 <audio>（iPhone 要同一個元素在按鈕當下播過，之後才能自動播）
+  blobs: new Map(),     // 已經先下載好的聲音檔：網址 → 手機裡的暫存網址（播的時候不用再等網路）
+  warm: false,          // 這次開 App 已經成功出過聲音（之後可以不必搶在按鈕當下播）
   init() {
     this.player = new Audio(); this.player.preload = 'auto'; this.player.setAttribute('playsinline', '');
-    fetch('audio/index.json').then(r => r.ok ? r.json() : null).then(j => { if (j) this.audio = { v: j.v, ids: new Set(j.ids) }; }).catch(() => { });
+    fetch('audio/index.json').then(r => r.ok ? r.json() : null).then(j => {
+      if (!j) return;
+      this.audio = { v: j.v, ids: new Set(j.ids) };
+      this.prefetch(['一、', '二、', '三、', '四、', '答對了。', '答錯了。', '正確答案是', '答案是', '這是複選題，要選兩個以上', '下一題'], true);
+    }).catch(() => { });
     if (!window.speechSynthesis) return;
     const pickV = () => {
       const vs = speechSynthesis.getVoices();
@@ -520,9 +533,29 @@ const Speech = {
       .replace(/℃/g, '度C').replace(/m3|m³/g, '立方公尺').replace(/mg\/m3/g, '毫克每立方公尺').replace(/％|%/g, '%');
   },
   clipOf(p) {
-    if (!this.audio) return null;
+    if (!this.audio || P.set.voice === 'tts') return null;
     const id = cyrb53(this.audio.v + '|' + p);
     return this.audio.ids.has(id) ? 'audio/' + id + '.mp3' : null;
+  },
+  // 先把等一下要念的聲音檔下載起來（keep：常用的短句不清掉）
+  prefetch(parts, keep) {
+    for (const p of parts) {
+      if (typeof p !== 'string') continue;
+      const src = this.clipOf(p);
+      if (!src || this.blobs.has(src)) continue;
+      this.blobs.set(src, { url: null, keep });
+      fetch(src).then(r => r.ok ? r.blob() : Promise.reject()).then(b => {
+        const e = this.blobs.get(src); if (e) e.url = URL.createObjectURL(b);
+      }).catch(() => this.blobs.delete(src));
+    }
+    if (this.blobs.size > 500) {          // 太多就把最舊的清掉
+      for (const [k, e] of this.blobs) {
+        if (this.blobs.size <= 350) break;
+        if (e.keep) continue;
+        if (e.url) URL.revokeObjectURL(e.url);
+        this.blobs.delete(k);
+      }
+    }
   },
   // parts：字串或 {wait:秒}，一段一段念，念完呼叫 done
   // 每次 say 有自己的編號；換題時舊的那串念到一半被取消，iPhone 還是會觸發 onend，
@@ -535,13 +568,22 @@ const Speech = {
     const tts = !!window.speechSynthesis;
     // 網頁朗讀：iPhone 剛取消完馬上念會被吃掉，「正在念」或「0.3 秒內才取消過」都等一下再念
     const busy = tts && (speechSynthesis.speaking || speechSynthesis.pending || Date.now() - (this.lastCancel || 0) < 300);
-    if (tts) { speechSynthesis.cancel(); this.lastCancel = Date.now(); }
-    const list = parts.slice();
+    if (tts && (busy || this.ttsUsed)) { speechSynthesis.cancel(); this.lastCancel = Date.now(); }
+    // 用網頁朗讀時，「一、」和選項合成一句念（分開念中間會停頓）
+    const list = [];
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      if (typeof p === 'string' && /^[一二三四]、$/.test(p) && typeof parts[i + 1] === 'string' && !this.clipOf(p)) list.push(p + parts[++i]);
+      else list.push(p);
+    }
+    this.prefetch(list);          // 後面幾段趁前面在念的時候先下載
     const speakTTS = p => {
       if (!tts) return next();
       const u = new SpeechSynthesisUtterance(this.clean(p));
       u.lang = 'zh-TW'; if (this.voice) u.voice = this.voice; u.rate = P.set.rate;
+      u.onstart = () => { this.warm = true; };
       u.onend = next; u.onerror = next;
+      this.ttsUsed = true;
       speechSynthesis.speak(u);
     };
     const next = () => {
@@ -552,15 +594,23 @@ const Speech = {
       const src = this.clipOf(p);
       if (!src) return speakTTS(p);
       const a = this.player;
-      let failed = false;
-      const fail = () => { if (failed || my !== this.gen) return; failed = true; speakTTS(p); };   // 抓不到檔（沒網路）就改用網頁朗讀
-      a.onended = () => { if (my === this.gen) next(); };
-      a.onerror = fail;
-      a.src = src;
-      a.defaultPlaybackRate = a.playbackRate = P.set.rate;
-      a.play().then(() => { a.playbackRate = P.set.rate; }).catch(fail);
+      const ready = this.blobs.get(src);
+      let tried = ready && ready.url ? 0 : 1;      // 0＝先試已下載好的，1＝直接用網路上的
+      const start = url => {
+        a.onended = () => { if (my === this.gen) next(); };
+        a.onerror = fail;
+        a.src = url;
+        a.defaultPlaybackRate = a.playbackRate = P.set.rate;
+        a.play().then(() => { a.playbackRate = P.set.rate; this.warm = true; }).catch(fail);
+      };
+      const fail = () => {
+        if (my !== this.gen) return;
+        if (tried === 0) { tried = 1; return start(src); }      // 暫存的播不了 → 改抓網路上的
+        if (tried === 1) { tried = 2; speakTTS(p); }            // 還是不行（沒網路）→ 改用網頁朗讀
+      };
+      start(tried === 0 ? ready.url : src);
     };
-    // 第一句是聲音檔就馬上播（要在按按鈕的當下開始）；是網頁朗讀又剛取消過才等一下
+    // 第一句是聲音檔就馬上播；是網頁朗讀又剛取消過才等一下
     const first = list.find(x => typeof x === 'string');
     if (busy && !(first && this.clipOf(first))) this.timer = setTimeout(next, 300); else next();
   },
@@ -573,14 +623,17 @@ const Speech = {
   unlock() {
     // 按按鈕的當下，讓聲音檔播放器先播一小段無聲，iPhone 之後才准自動播
     const a = this.player;
-    if (a && !this.audioUnlocked) {
+    if (a && !this.warm && P.set.voice !== 'tts') {
       a.onended = a.onerror = null; a.src = 'audio/silence.mp3';
-      a.play().then(() => { this.audioUnlocked = true; }).catch(() => { });
+      a.play().catch(() => { });
     }
-    if (!window.speechSynthesis || this.unlocked) return;
-    const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); this.unlocked = true;
+    if (!window.speechSynthesis || this.unlocked || (this.audio && P.set.voice !== 'tts')) return;
+    const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); this.unlocked = true; this.ttsUsed = true;
   },
-  stop() { this.gen++; clearTimeout(this.timer); this.halt(); if (window.speechSynthesis) { speechSynthesis.cancel(); this.lastCancel = Date.now(); } },
+  stop() {
+    this.gen++; clearTimeout(this.timer); this.halt();
+    if (window.speechSynthesis && this.ttsUsed) { speechSynthesis.cancel(); this.lastCancel = Date.now(); }
+  },
 };
 function qParts(q, withAns, withOpts = true) {
   const parts = [q.q];
@@ -632,6 +685,7 @@ routes.listen = src => {
 function lPlay() {
   const q = BY_ID[L.ids[L.i]];
   if (!q) { L.playing = false; return render(); }
+  const nq = BY_ID[L.ids[L.i + 1]]; if (nq) Speech.prefetch(qParts(nq, true));   // 下一題先下載
   Speech.say([...(L.i ? ['下一題'] : []), ...qParts(q, true)], () => {
     if (!L.playing) return;
     if (L.src === 'today') { day().listened = 1; save(); }
@@ -672,6 +726,11 @@ routes.me = () => {
     <h2>設定</h2>
     <div class="card">
       <label class="row"><span class="grow">做題時自動念題目和解說</span><input type="checkbox" ${P.set.autoRead ? 'checked' : ''} onchange="P.set.autoRead=this.checked;save()"></label>
+      <div style="margin-top:10px">朗讀聲音
+        <select style="margin-top:4px" onchange="P.set.voice=this.value;save();Speech.stop()">
+          <option value="rec" ${P.set.voice !== 'tts' ? 'selected' : ''}>錄音檔（靜音模式也聽得到）</option>
+          <option value="tts" ${P.set.voice === 'tts' ? 'selected' : ''}>iPhone 內建語音（原本的聲音；靜音模式沒聲音）</option>
+        </select></div>
       <div class="row" style="margin-top:10px"><span class="grow">念的速度</span><select style="width:auto" onchange="P.set.rate=+this.value;save()">${RATES.map(r => `<option ${P.set.rate === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
       <div class="row" style="margin-top:10px"><span class="grow">字體大小</span><select style="width:auto" onchange="P.set.font=+this.value;save();applyFont()">${[[17, '標準'], [19, '大'], [21, '特大']].map(([v, t]) => `<option value="${v}" ${P.set.font === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <div class="row" style="margin-top:10px"><span class="grow">第一輪讀完的目標日</span><select style="width:auto" onchange="P.set.goal=this.value;save()">${[['2026-12-31', '12/31'], ['2027-01-15', '1/15'], ['2027-01-31', '1/31（建議）'], ['2027-02-14', '2/14'], ['2027-02-20', '2/20（最晚）']].map(([v, t]) => `<option value="${v}" ${P.set.goal === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>

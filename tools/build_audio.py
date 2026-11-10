@@ -3,6 +3,7 @@
 用法：python tools/build_audio.py            只錄還沒錄過的句子
       python tools/build_audio.py --prune    另外刪掉已經用不到的舊檔
       python tools/build_audio.py --list     只列出要錄幾句，不錄
+      python tools/build_audio.py --redo     全部刪掉重錄
 
 - 句子怎麼切，要跟 docs/app.js 念的方式一模一樣（quizParts、speakCur、qParts、noteLines）
 - 檔名 id ＝ cyrb53(VOICE_KEY + '|' + 原句)，app.js 用同一個算法找檔案
@@ -23,6 +24,9 @@ VOICE = "Yating"
 SPEAKING_RATE = 1.2           # 錄音語速；App 播放時再乘上使用者設定的語速
 VOICE_KEY = f"{VOICE}{SPEAKING_RATE}"
 NUM = ["", "一", "二", "三", "四"]
+# 語音引擎每句頭尾會留 0.1／0.6 秒空白，一段接一段播會拖很久：剪到只剩一點點
+_SR = "silenceremove=start_periods=1:start_threshold=-45dB:start_silence="
+TRIM = f"{_SR}0.02,areverse,{_SR}0.05,areverse"
 FIXED = ["答對了。", "答錯了。", "正確答案是", "答案是", "這是複選題，要選兩個以上", "下一題"]
 
 
@@ -136,6 +140,9 @@ def for_speech(t):
 def main():
     items = collect()
     OUT.mkdir(parents=True, exist_ok=True)
+    if "--redo" in sys.argv:          # 全部重錄
+        for p in OUT.glob("*.mp3"):
+            p.unlink()
     have = {p.stem for p in OUT.glob("*.mp3")}
     todo = {k: v for k, v in items.items() if k not in have}
     print(f"共 {len(items)} 句，已有 {len(items) - len(todo)}，要錄 {len(todo)} 句（約 {sum(map(len, todo.values()))} 字）")
@@ -162,8 +169,8 @@ def main():
             wav = work / f"{k}.wav"
             if not wav.exists():
                 return k, False
-            r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-ac", "1", "-ar", "22050", "-b:a", "24k",
-                                str(OUT / f"{k}.mp3")], capture_output=True)
+            r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-af", TRIM, "-ac", "1", "-ar", "22050",
+                                "-b:a", "24k", str(OUT / f"{k}.mp3")], capture_output=True)
             if r.returncode == 0:
                 wav.unlink()
             return k, r.returncode == 0
