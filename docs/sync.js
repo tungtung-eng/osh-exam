@@ -5,7 +5,7 @@
 window.Sync = (() => {
   const FILE = 'osh-exam-progress.json';
   const API = 'https://api.github.com';
-  let auth = null, timer = null, busy = false, lastMsg = '';
+  let auth = null, timer = null, busy = false, lastMsg = '', state = 'none', lastOk = 0;
 
   function loadAuth() { try { auth = JSON.parse(localStorage.getItem('oshGH') || 'null'); } catch (e) { auth = null; } }
   function saveAuth() { try { auth ? localStorage.setItem('oshGH', JSON.stringify(auth)) : localStorage.removeItem('oshGH'); } catch (e) { } }
@@ -75,8 +75,10 @@ window.Sync = (() => {
       localStorage.setItem('oshP', JSON.stringify(merged));
       await gh('/gists/' + auth.gist, { method: 'PATCH', body: JSON.stringify({ files: { [FILE]: { content: JSON.stringify(merged) } } }) });
       lastMsg = '已同步 ' + new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+      state = 'ok'; lastOk = Date.now();
     } catch (e) {
       lastMsg = e.message === 'key' ? '鑰匙失效（過期或被刪掉），請重新貼一把新的' : '這次沒同步到（沒網路時先存在這台，有網路會再補）';
+      state = e.message === 'key' ? 'key' : 'net';
     }
     busy = false;
     const box = document.getElementById('syncBox'); if (box) draw(box);
@@ -125,5 +127,7 @@ window.Sync = (() => {
   setTimeout(() => { if (auth) now().then(refresh); }, 500);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && auth) now().then(refresh); });
 
-  return { later, now, box: draw, login, out, merge };
+  // 給「今天」頁顯示同步狀態：none＝這台沒連、key＝鑰匙失效、net＝沒網路、ok＝正常
+  const status = () => ({ state: auth ? state : 'none', lastOk });
+  return { later, now, box: draw, login, out, merge, status };
 })();

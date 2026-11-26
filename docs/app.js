@@ -164,6 +164,7 @@ routes.today = () => {
     </div>
     ${regOpen ? `<div class="card" style="background:var(--warnbg)"><b>⚠ 現在是報名期間</b>（到 ${EXAM.reg[1].slice(5).replace('-', '/')}），記得上技檢中心網站報名！</div>` : ''}
     ${regSoon ? `<div class="card" style="background:var(--warnbg)"><b>報名快到了</b>：${EXAM.reg[0].slice(5).replace('-', '/')}～${EXAM.reg[1].slice(5).replace('-', '/')}</div>` : ''}
+    ${syncBanner()}
     <h2>今日任務</h2>
     <div class="sub" style="margin:-4px 0 6px">時間只是建議：有空就做、順序不限。今天沒做完，之後幾天會自動分攤；有空多做，之後每天就變少。</div>
     ${pl.inSprint
@@ -184,6 +185,16 @@ routes.today = () => {
       ${pl.eta && !pl.inSprint ? `<br>照你最近 7 天的速度（每天約 ${Math.round(pl.pace)} 題），預計 <b>${pl.eta.slice(5).replace('-', '/')}</b> 讀完第一輪，${pl.eta <= pl.goal ? `比目標早 ${daysBetween(pl.eta, pl.goal)} 天 👍` : `比目標晚 ${daysBetween(pl.goal, pl.eta)} 天，有空可以按「超前多學」`}。` : ''}</div>
   `;
 };
+// 同步出問題時在首頁提醒（之前鑰匙過期也不會發現，手機電腦就各記各的）
+function syncBanner() {
+  if (!window.Sync) return '';
+  const st = Sync.status();
+  const link = '<a class="btn small" href="#/me">到「我的」處理</a>';
+  if (st.state === 'key') return `<div class="card" style="background:var(--ngbg);border-color:var(--ng)"><b>⚠ 同步鑰匙過期了</b><div class="sub" style="margin:4px 0 8px">這台的進度沒有傳上去，手機和電腦會不一樣。產生一把新鑰匙貼上就好，進度不會不見。</div>${link}</div>`;
+  if (st.state === 'none') return `<div class="card" style="background:var(--warnbg)"><b>這台還沒連上同步</b><div class="sub" style="margin:4px 0 8px">進度只存在這台，另一台看不到。</div>${link}</div>`;
+  if (st.state === 'net') return `<div class="card sub">這次沒同步到（可能沒網路），有網路時會自動補上。</div>`;
+  return '';
+}
 window.startNew = extra => {
   const pl = plan();
   const n = extra || Math.max(1, pl.target - pl.doneToday);
